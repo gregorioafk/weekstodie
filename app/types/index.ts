@@ -89,3 +89,101 @@ export interface LifeConfigPanelProps {
   config: LifeStagesConfig;
   onChange: (config: LifeStagesConfig) => void;
 }
+
+// ========================================
+// SOBREPOSICIÓN DE ETAPAS
+// ========================================
+
+export interface OverlapConfig {
+  allowStudyWorkOverlap: boolean;
+  allowCustomOverlap: boolean;
+}
+
+// Etapa de vida extendida (puede tener múltiples)
+export type ExtendedLifeStage = LifeStage | 'study_work' | string;
+
+// ========================================
+// EVENTOS DE VIDA
+// ========================================
+
+export type EventCategory =
+  | 'migration'
+  | 'family'
+  | 'career'
+  | 'education'
+  | 'health'
+  | 'milestone'
+  | 'custom';
+
+export interface LifeEvent {
+  id: string;
+  name: string;
+  date: Date;
+  category: EventCategory;
+  emoji: string;
+  color?: string;
+  description?: string;
+  absoluteWeek?: number;
+}
+
+export interface EventPreset {
+  category: EventCategory;
+  emoji: string;
+  defaultColor: string;
+  label: string;
+}
+
+// ========================================
+// ETAPAS CUSTOM
+// ========================================
+
+export interface CustomStage {
+  id: string;
+  name: string;
+  color: string;
+  colorFuture: string;
+  startAge?: number;
+  endAge?: number;
+  startDate?: Date;
+  endDate?: Date;
+  canOverlap: boolean;
+  icon: string;
+}
+
+// ========================================
+// DATOS EXTENDIDOS
+// ========================================
+
+export interface WeekDataExtended extends Omit<WeekData, 'stage'> {
+  stages: ExtendedLifeStage[];
+  primaryStage: ExtendedLifeStage;
+  hasOverlap: boolean;
+  events: LifeEvent[];
+}
+
+export interface LifeStagesConfigExtended extends LifeStagesConfig {
+  overlapConfig: OverlapConfig;
+  customStages: CustomStage[];
+}
+
+// ========================================
+// PROPS EXTENDIDOS
+// ========================================
+
+export interface WeeksGridExtendedProps {
+  gridData: WeekDataExtended[][];
+  birthDate: Date | null;
+  showStages: boolean;
+  showEvents: boolean;
+  events: LifeEvent[];
+  customStages: CustomStage[];
+  onWeekClick?: (week: WeekDataExtended) => void;
+}
+
+export interface LifeConfigPanelExtendedProps {
+  config: LifeStagesConfigExtended;
+  onChange: (config: LifeStagesConfigExtended) => void;
+  events: LifeEvent[];
+  onEventsChange: (events: LifeEvent[]) => void;
+  birthDate: Date | null;
+}

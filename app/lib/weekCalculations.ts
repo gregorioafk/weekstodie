@@ -6,6 +6,12 @@ import {
   WeekStatus,
   LifeStage,
   TimeStats,
+  LifeStagesConfigExtended,
+  WeekDataExtended,
+  ExtendedLifeStage,
+  LifeEvent,
+  CustomStage,
+  OverlapConfig,
 } from '@/app/types';
 
 export const DEFAULT_CONFIG: LifeConfig = {
@@ -23,6 +29,17 @@ export const DEFAULT_STAGES_CONFIG: LifeStagesConfig = {
   hoursCommutePerWeek: 10,
   hoursStudyPerWeek: 35,
   hoursSleepPerDay: 8,
+};
+
+export const DEFAULT_OVERLAP_CONFIG: OverlapConfig = {
+  allowStudyWorkOverlap: false,
+  allowCustomOverlap: true,
+};
+
+export const DEFAULT_STAGES_CONFIG_EXTENDED: LifeStagesConfigExtended = {
+  ...DEFAULT_STAGES_CONFIG,
+  overlapConfig: DEFAULT_OVERLAP_CONFIG,
+  customStages: [],
 };
 
 const HOURS_PER_WEEK = 168; // 24 * 7
@@ -158,6 +175,163 @@ export function generateGridData(
         absoluteWeek,
         status: birthDate ? getWeekStatus(absoluteWeek, weeksLived) : 'future',
         stage,
+      });
+    }
+    grid.push(row);
+  }
+
+  return grid;
+}
+
+// ========================================
+// FUNCIONES EXTENDIDAS PARA SOBREPOSICIÓN
+// ========================================
+
+function calculateWeekFromDate(birthDate: Date, targetDate: Date): number {
+  const diffTime = targetDate.getTime() - birthDate.getTime();
+  const diffDays = diffTime / (1000 * 60 * 60 * 24);
+  return Math.floor(diffDays / 7);
+}
+
+function addWeeksToDate(date: Date, weeks: number): Date {
+  const result = new Date(date);
+  result.setDate(result.getDate() + weeks * 7);
+  return result;
+}
+
+function isWeekInCustomStage(
+  yearIndex: number,
+  weekDate: Date | null,
+  customStage: CustomStage,
+  birthDate: Date | null
+): boolean {
+  // Por edad
+  if (customStage.startAge !== undefined) {
+    const endAge = customStage.endAge ?? 150;
+    if (yearIndex >= customStage.startAge && yearIndex < endAge) {
+      return true;
+    }
+  }
+
+  // Por fecha
+  if (customStage.startDate && weekDate && birthDate) {
+    const afterStart = weekDate >= customStage.startDate;
+    const beforeEnd = !customStage.endDate || weekDate < customStage.endDate;
+    if (afterStart && beforeEnd) return true;
+  }
+
+  return false;
+}
+
+export function getLifeStagesExtended(
+  yearIndex: number,
+  weekIndex: number,
+  birthDate: Date | null,
+  stagesConfig: LifeStagesConfigExtended,
+  lifeConfig: LifeConfig
+): { stages: ExtendedLifeStage[]; primaryStage: ExtendedLifeStage; hasOverlap: boolean } {
+  const stages: ExtendedLifeStage[] = [];
+
+  // 1. Determinar etapas base
+  if (yearIndex < stagesConfig.childhoodEndAge) {
+    stages.push('childhood');
+  }
+
+  const inStudyRange =
+    yearIndex >= stagesConfig.studyStartAge && yearIndex < stagesConfig.studyEndAge;
+  const inWorkRange =
+    yearIndex >= stagesConfig.workStartAge && yearIndex < stagesConfig.retirementAge;
+
+  if (inStudyRange) stages.push('study');
+  if (inWorkRange) stages.push('work');
+
+  if (yearIndex >= stagesConfig.retirementAge && yearIndex < lifeConfig.totalYears) {
+    stages.push('retirement');
+  }
+
+  // 2. Agregar etapas custom
+  if (stagesConfig.customStages.length > 0 && stagesConfig.overlapConfig.allowCustomOverlap) {
+    const absoluteWeek = yearIndex * lifeConfig.weeksPerYear + weekIndex;
+    const weekDate = birthDate ? addWeeksToDate(birthDate, absoluteWeek) : null;
+
+    for (const customStage of stagesConfig.customStages) {
+      if (isWeekInCustomStage(yearIndex, weekDate, customStage, birthDate)) {
+        stages.push(customStage.id);
+      }
+    }
+  }
+
+  // 3. Determinar sobreposición y etapa principal
+  const hasOverlap = stages.length > 1;
+  let primaryStage: ExtendedLifeStage = 'future';
+
+  if (stages.length > 0) {
+    // Si hay estudio + trabajo simultáneo
+    if (
+      stages.includes('study') &&
+      stages.includes('work') &&
+      stagesConfig.overlapConfig.allowStudyWorkOverlap
+    ) {
+      primaryStage = 'study_work';
+    } else {
+      // Prioridad: etapas custom primero, luego normales
+      const customStageIds = stagesConfig.customStages.map((s) => s.id);
+      const customInStages = stages.filter((s) => customStageIds.includes(s));
+
+      if (customInStages.length > 0) {
+        primaryStage = customInStages[0];
+      } else {
+        primaryStage = stages[0];
+      }
+    }
+  }
+
+  return { stages, primaryStage, hasOverlap };
+}
+
+export function generateGridDataExtended(
+  birthDate: Date | null,
+  lifeConfig: LifeConfig = DEFAULT_CONFIG,
+  stagesConfig: LifeStagesConfigExtended = DEFAULT_STAGES_CONFIG_EXTENDED,
+  events: LifeEvent[] = []
+): WeekDataExtended[][] {
+  const weeksLived = birthDate ? calculateWeeksLived(birthDate) : 0;
+  const grid: WeekDataExtended[][] = [];
+
+  // Pre-indexar eventos por semana absoluta para O(1) lookup
+  const eventsByWeek = new Map<number, LifeEvent[]>();
+  for (const event of events) {
+    const eventWeek = birthDate ? calculateWeekFromDate(birthDate, event.date) : -1;
+    if (eventWeek >= 0) {
+      if (!eventsByWeek.has(eventWeek)) {
+        eventsByWeek.set(eventWeek, []);
+      }
+      eventsByWeek.get(eventWeek)!.push({ ...event, absoluteWeek: eventWeek });
+    }
+  }
+
+  for (let year = 0; year < lifeConfig.totalYears; year++) {
+    const row: WeekDataExtended[] = [];
+
+    for (let week = 0; week < lifeConfig.weeksPerYear; week++) {
+      const absoluteWeek = year * lifeConfig.weeksPerYear + week;
+      const { stages, primaryStage, hasOverlap } = getLifeStagesExtended(
+        year,
+        week,
+        birthDate,
+        stagesConfig,
+        lifeConfig
+      );
+
+      row.push({
+        year,
+        week,
+        absoluteWeek,
+        status: birthDate ? getWeekStatus(absoluteWeek, weeksLived) : 'future',
+        stages,
+        primaryStage,
+        hasOverlap,
+        events: eventsByWeek.get(absoluteWeek) || [],
       });
     }
     grid.push(row);

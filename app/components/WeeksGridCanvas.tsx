@@ -1,13 +1,16 @@
 'use client';
 
 import { useRef, useEffect, useCallback, useState } from 'react';
-import { WeekData } from '@/app/types';
+import { WeekData, WeekDataExtended, LifeEvent, CustomStage, ExtendedLifeStage } from '@/app/types';
 
 interface WeeksGridCanvasProps {
-  gridData: WeekData[][];
+  gridData: (WeekData | WeekDataExtended)[][];
   birthDate: Date | null;
   showStages: boolean;
-  weeksWithTodos: number[];
+  weeksWithTodos?: number[];
+  events?: LifeEvent[];
+  customStages?: CustomStage[];
+  showEvents?: boolean;
 }
 
 const CELL_SIZE = 10;
@@ -21,6 +24,7 @@ const STAGE_COLORS = {
   work: { lived: '#fb923c', future: '#ffedd5' },
   retirement: { lived: '#2dd4bf', future: '#ccfbf1' },
   future: { lived: '#a1a1aa', future: '#f4f4f5' },
+  study_work: { lived: '#a78bfa', future: '#ede9fe' },
 };
 
 const STAGE_COLORS_DARK = {
@@ -29,16 +33,44 @@ const STAGE_COLORS_DARK = {
   work: { lived: '#fb923c', future: '#431407' },
   retirement: { lived: '#2dd4bf', future: '#042f2e' },
   future: { lived: '#a1a1aa', future: '#27272a' },
+  study_work: { lived: '#a78bfa', future: '#2e1065' },
 };
+
+type ColorMap = typeof STAGE_COLORS;
+
+function isExtendedWeekData(data: WeekData | WeekDataExtended): data is WeekDataExtended {
+  return 'stages' in data && Array.isArray(data.stages);
+}
+
+function getStageColor(
+  stage: ExtendedLifeStage,
+  isLived: boolean,
+  colors: ColorMap,
+  customStages: CustomStage[],
+  isDark: boolean
+): string {
+  // Buscar en etapas custom primero
+  const customStage = customStages.find((s) => s.id === stage);
+  if (customStage) {
+    return isLived ? customStage.color : customStage.colorFuture;
+  }
+
+  // Etapas predefinidas
+  const stageColors = colors[stage as keyof ColorMap] || colors.future;
+  return isLived ? stageColors.lived : stageColors.future;
+}
 
 export default function WeeksGridCanvas({
   gridData,
   birthDate,
   showStages,
-  weeksWithTodos,
+  weeksWithTodos = [],
+  events = [],
+  customStages = [],
+  showEvents = true,
 }: WeeksGridCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [selectedWeek, setSelectedWeek] = useState<WeekData | null>(null);
+  const [selectedWeek, setSelectedWeek] = useState<WeekData | WeekDataExtended | null>(null);
   const [isDark, setIsDark] = useState(false);
   const weeksSet = useRef(new Set(weeksWithTodos));
 
@@ -78,27 +110,60 @@ export default function WeeksGridCanvas({
         const data = row[week];
         const x = week * (CELL_SIZE + GAP);
         const y = year * (CELL_SIZE + GAP);
+        const isLived = data.status === 'lived' || data.status === 'current';
 
-        // Get color
-        let color: string;
-        if (!birthDate) {
-          color = isDark ? '#3f3f46' : '#e4e4e7';
-        } else if (showStages) {
-          const stageColors = colors[data.stage];
-          color = data.status === 'lived' || data.status === 'current'
-            ? stageColors.lived
-            : stageColors.future;
+        // Check if extended data with overlap
+        if (isExtendedWeekData(data) && data.hasOverlap && data.stages.length >= 2) {
+          // Draw split cell for overlap
+          const color1 = getStageColor(data.stages[0], isLived, colors, customStages, isDark);
+          const color2 = getStageColor(data.stages[1], isLived, colors, customStages, isDark);
+
+          // Top-left triangle
+          ctx.fillStyle = color1;
+          ctx.beginPath();
+          ctx.moveTo(x, y);
+          ctx.lineTo(x + CELL_SIZE, y);
+          ctx.lineTo(x, y + CELL_SIZE);
+          ctx.closePath();
+          ctx.fill();
+
+          // Bottom-right triangle
+          ctx.fillStyle = color2;
+          ctx.beginPath();
+          ctx.moveTo(x + CELL_SIZE, y);
+          ctx.lineTo(x + CELL_SIZE, y + CELL_SIZE);
+          ctx.lineTo(x, y + CELL_SIZE);
+          ctx.closePath();
+          ctx.fill();
+
+          // Diagonal line
+          ctx.strokeStyle = isDark ? '#52525b' : '#d4d4d8';
+          ctx.lineWidth = 0.5;
+          ctx.beginPath();
+          ctx.moveTo(x + CELL_SIZE, y);
+          ctx.lineTo(x, y + CELL_SIZE);
+          ctx.stroke();
         } else {
-          color = data.status === 'lived' || data.status === 'current'
-            ? '#ff5252'
-            : isDark ? '#27272a' : '#f4f4f5';
-        }
+          // Normal cell
+          let color: string;
+          if (!birthDate) {
+            color = isDark ? '#3f3f46' : '#e4e4e7';
+          } else if (showStages) {
+            if (isExtendedWeekData(data)) {
+              color = getStageColor(data.primaryStage, isLived, colors, customStages, isDark);
+            } else {
+              const stageColors = colors[data.stage as keyof ColorMap] || colors.future;
+              color = isLived ? stageColors.lived : stageColors.future;
+            }
+          } else {
+            color = isLived ? '#ff5252' : isDark ? '#27272a' : '#f4f4f5';
+          }
 
-        // Draw cell
-        ctx.fillStyle = color;
-        ctx.beginPath();
-        ctx.roundRect(x, y, CELL_SIZE, CELL_SIZE, 2);
-        ctx.fill();
+          ctx.fillStyle = color;
+          ctx.beginPath();
+          ctx.roundRect(x, y, CELL_SIZE, CELL_SIZE, 2);
+          ctx.fill();
+        }
 
         // Draw current week indicator
         if (data.status === 'current' && birthDate) {
@@ -109,7 +174,16 @@ export default function WeeksGridCanvas({
           ctx.stroke();
         }
 
-        // Draw todo indicator
+        // Draw event indicator
+        if (showEvents && isExtendedWeekData(data) && data.events.length > 0) {
+          const event = data.events[0];
+          ctx.fillStyle = event.color || '#10b981';
+          ctx.beginPath();
+          ctx.arc(x + CELL_SIZE - 2, y + 2, 3, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        // Draw todo indicator (legacy support)
         if (weeksSet.current.has(data.absoluteWeek)) {
           ctx.fillStyle = '#10b981';
           ctx.beginPath();
@@ -118,38 +192,56 @@ export default function WeeksGridCanvas({
         }
       }
     }
-  }, [gridData, birthDate, showStages, isDark]);
+  }, [gridData, birthDate, showStages, isDark, customStages, showEvents]);
 
   // Draw on mount and when dependencies change
   useEffect(() => {
     draw();
-  }, [draw, weeksWithTodos]);
+  }, [draw, weeksWithTodos, events]);
 
   // Handle click
-  const handleClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
+  const handleClick = useCallback(
+    (e: React.MouseEvent<HTMLCanvasElement>) => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
 
-    const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = canvas.width / rect.width;
+      const scaleY = canvas.height / rect.height;
 
-    const x = (e.clientX - rect.left) * scaleX;
-    const y = (e.clientY - rect.top) * scaleY;
+      const x = (e.clientX - rect.left) * scaleX;
+      const y = (e.clientY - rect.top) * scaleY;
 
-    const week = Math.floor(x / (CELL_SIZE + GAP));
-    const year = Math.floor(y / (CELL_SIZE + GAP));
+      const week = Math.floor(x / (CELL_SIZE + GAP));
+      const year = Math.floor(y / (CELL_SIZE + GAP));
 
-    if (year >= 0 && year < ROWS && week >= 0 && week < COLS) {
-      const weekData = gridData[year]?.[week];
-      if (weekData) {
-        setSelectedWeek(weekData);
+      if (year >= 0 && year < ROWS && week >= 0 && week < COLS) {
+        const weekData = gridData[year]?.[week];
+        if (weekData) {
+          setSelectedWeek(weekData);
+        }
       }
-    }
-  }, [gridData]);
+    },
+    [gridData]
+  );
 
   const width = COLS * (CELL_SIZE + GAP) - GAP;
   const height = ROWS * (CELL_SIZE + GAP) - GAP;
+
+  const getStageName = (stage: string): string => {
+    const customStage = customStages.find((s) => s.id === stage);
+    if (customStage) return customStage.name;
+
+    const names: Record<string, string> = {
+      childhood: 'Ninez',
+      study: 'Estudios',
+      work: 'Trabajo',
+      retirement: 'Jubilacion',
+      study_work: 'Estudio + Trabajo',
+      future: 'Futuro',
+    };
+    return names[stage] || stage;
+  };
 
   return (
     <>
@@ -191,7 +283,7 @@ export default function WeeksGridCanvas({
             style={{
               width: Math.min(width, typeof window !== 'undefined' ? window.innerWidth - 80 : width),
               height: 'auto',
-              aspectRatio: `${width} / ${height}`
+              aspectRatio: `${width} / ${height}`,
             }}
           />
         </div>
@@ -215,18 +307,51 @@ export default function WeeksGridCanvas({
                 className="p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
               >
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
                 </svg>
               </button>
             </div>
             <div className="space-y-2 text-sm text-zinc-600 dark:text-zinc-400">
               <p>Semana absoluta: #{selectedWeek.absoluteWeek + 1}</p>
-              <p>Etapa: {selectedWeek.stage === 'childhood' ? 'Ninez' :
-                        selectedWeek.stage === 'study' ? 'Estudios' :
-                        selectedWeek.stage === 'work' ? 'Trabajo' :
-                        selectedWeek.stage === 'retirement' ? 'Jubilacion' : 'Futuro'}</p>
-              <p>Estado: {selectedWeek.status === 'lived' ? 'Vivida' :
-                         selectedWeek.status === 'current' ? 'Actual' : 'Futura'}</p>
+              {isExtendedWeekData(selectedWeek) ? (
+                <>
+                  <p>
+                    Etapa{selectedWeek.stages.length > 1 ? 's' : ''}:{' '}
+                    {selectedWeek.stages.map((s) => getStageName(s)).join(' + ')}
+                  </p>
+                  {selectedWeek.hasOverlap && (
+                    <p className="text-purple-500 dark:text-purple-400">
+                      Sobreposicion de etapas
+                    </p>
+                  )}
+                  {selectedWeek.events.length > 0 && (
+                    <div className="mt-3 pt-3 border-t border-zinc-200 dark:border-zinc-700">
+                      <p className="font-medium mb-2">Eventos:</p>
+                      {selectedWeek.events.map((event) => (
+                        <div key={event.id} className="flex items-center gap-2">
+                          <span>{event.emoji}</span>
+                          <span>{event.name}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <p>Etapa: {getStageName(selectedWeek.stage)}</p>
+              )}
+              <p>
+                Estado:{' '}
+                {selectedWeek.status === 'lived'
+                  ? 'Vivida'
+                  : selectedWeek.status === 'current'
+                    ? 'Actual'
+                    : 'Futura'}
+              </p>
             </div>
           </div>
         </div>

@@ -107,7 +107,7 @@ export default function Home() {
             Basado en el concepto de &quot;4000 semanas&quot; del libro de Oliver Burkeman.
           </p>
           <p className="mt-2">
-            Hecho con Next.js, Tailwind CSS y Supabase.
+            Hecho con Next.js y Tailwind CSS.
           </p>
         </div>
       </footer>

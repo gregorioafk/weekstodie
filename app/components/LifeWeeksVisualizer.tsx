@@ -1,13 +1,14 @@
 'use client';
 
-import { useLifeWeeks } from '@/app/hooks/useLifeWeeks';
+import { useLifeWeeksExtended } from '@/app/hooks/useLifeWeeks';
 import DatePicker from './DatePicker';
-import WeeksGridSimple from './WeeksGridSimple';
+import WeeksGridCanvas from './WeeksGridCanvas';
 import StatsPanel from './StatsPanel';
-import LifeConfigPanel from './LifeConfigPanel';
+import { LifeConfigPanelExtended } from './LifeConfigPanel';
 
 export default function LifeWeeksVisualizer() {
   const {
+    isLoaded,
     birthDate,
     setBirthDate,
     stats,
@@ -15,9 +16,21 @@ export default function LifeWeeksVisualizer() {
     lifeConfig,
     stagesConfig,
     setStagesConfig,
+    events,
+    setEvents,
     showStages,
     toggleShowStages,
-  } = useLifeWeeks();
+    showEvents,
+    toggleShowEvents,
+  } = useLifeWeeksExtended();
+
+  if (!isLoaded) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="animate-pulse text-zinc-500">Cargando...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-8 w-full max-w-7xl mx-auto px-4 py-8">
@@ -40,7 +53,13 @@ export default function LifeWeeksVisualizer() {
 
       {/* Config Panel */}
       <section>
-        <LifeConfigPanel config={stagesConfig} onChange={setStagesConfig} />
+        <LifeConfigPanelExtended
+          config={stagesConfig}
+          onChange={setStagesConfig}
+          events={events}
+          onEventsChange={setEvents}
+          birthDate={birthDate}
+        />
       </section>
 
       {/* Stats Panel */}
@@ -50,8 +69,8 @@ export default function LifeWeeksVisualizer() {
         </section>
       )}
 
-      {/* View Toggle */}
-      <section className="flex justify-center">
+      {/* View Toggles */}
+      <section className="flex flex-wrap justify-center gap-3">
         <button
           onClick={toggleShowStages}
           className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors
@@ -64,6 +83,20 @@ export default function LifeWeeksVisualizer() {
           <span>{showStages ? '🎨' : '⬛'}</span>
           <span>{showStages ? 'Vista por etapas' : 'Vista simple'}</span>
         </button>
+        {events.length > 0 && (
+          <button
+            onClick={toggleShowEvents}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors
+                       ${
+                         showEvents
+                           ? 'bg-emerald-500 text-white'
+                           : 'bg-zinc-200 dark:bg-zinc-700 text-foreground'
+                       }`}
+          >
+            <span>📌</span>
+            <span>{showEvents ? 'Eventos visibles' : 'Eventos ocultos'}</span>
+          </button>
+        )}
       </section>
 
       {/* Legend */}
@@ -85,6 +118,23 @@ export default function LifeWeeksVisualizer() {
             <span className="w-4 h-4 rounded-sm bg-teal-400" />
             <span className="text-zinc-600 dark:text-zinc-400">Jubilacion</span>
           </div>
+          {stagesConfig.overlapConfig.allowStudyWorkOverlap && (
+            <div className="flex items-center gap-2">
+              <span className="w-4 h-4 rounded-sm bg-violet-400" />
+              <span className="text-zinc-600 dark:text-zinc-400">Estudio + Trabajo</span>
+            </div>
+          )}
+          {stagesConfig.customStages.map((stage) => (
+            <div key={stage.id} className="flex items-center gap-2">
+              <span
+                className="w-4 h-4 rounded-sm"
+                style={{ backgroundColor: stage.color }}
+              />
+              <span className="text-zinc-600 dark:text-zinc-400">
+                {stage.icon} {stage.name}
+              </span>
+            </div>
+          ))}
         </section>
       ) : (
         <section className="flex justify-center gap-6 text-sm">
@@ -101,7 +151,14 @@ export default function LifeWeeksVisualizer() {
 
       {/* Weeks Grid */}
       <section className="overflow-x-auto pb-4">
-        <WeeksGridSimple gridData={gridData} birthDate={birthDate} showStages={showStages} />
+        <WeeksGridCanvas
+          gridData={gridData}
+          birthDate={birthDate}
+          showStages={showStages}
+          events={events}
+          customStages={stagesConfig.customStages}
+          showEvents={showEvents}
+        />
       </section>
 
       {/* Info */}
