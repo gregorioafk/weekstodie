@@ -1,36 +1,89 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# WeeksToDie
+
+A life visualization tool that displays your entire life as a grid of weeks (80 years x 52 weeks = 4,160 weeks). Track how many weeks you've lived and what's ahead.
+
+## Features
+
+- Visual grid showing all weeks of an 80-year lifespan
+- Color-coded life stages (childhood, study, work, retirement)
+- Track todos/goals for specific weeks
+- Configure custom life stage boundaries
+- Dark mode support
+- High-performance Canvas rendering
+
+## Tech Stack
+
+- **Framework:** Next.js 15 (App Router)
+- **Auth & Database:** Supabase
+- **Styling:** Tailwind CSS
+- **Language:** TypeScript
 
 ## Getting Started
 
-First, run the development server:
+### 1. Clone the repository
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+git clone https://github.com/your-username/weekstodie.git
+cd weekstodie
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### 2. Install dependencies
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+bun install
+# or
+npm install
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### 3. Set up environment variables
 
-## Learn More
+Copy the example file and fill in your Supabase credentials:
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+cp .env.local.example .env.local
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Required variables:
+- `NEXT_PUBLIC_SUPABASE_URL` - Your Supabase project URL
+- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY` - Your Supabase anon/public key
+- `DATABASE_URL` - PostgreSQL connection string (optional, for direct DB access)
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### 4. Set up the database
 
-## Deploy on Vercel
+Go to your Supabase Dashboard > SQL Editor and run the contents of `supabase/schema.sql`.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+This creates:
+- `profiles` table (user settings and birth date)
+- `week_todos` table (tasks linked to specific weeks)
+- Auto-create profile trigger on user registration
+- Row Level Security policies
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### 5. Run the development server
+
+```bash
+bun dev
+# or
+npm run dev
+```
+
+Open [http://localhost:3000](http://localhost:3000) in your browser.
+
+## Project Structure
+
+```
+app/
+├── (auth)/          # Auth pages (login, register)
+├── (protected)/     # Protected routes (dashboard)
+├── components/      # React components
+├── contexts/        # React contexts (Auth)
+├── hooks/           # Custom hooks
+├── interfaces/      # TypeScript interfaces
+├── lib/             # Utilities (Supabase client, calculations)
+├── repositories/    # Data access layer
+├── services/        # Business logic layer
+└── types/           # TypeScript types
+```
+
+## License
+
+MIT
